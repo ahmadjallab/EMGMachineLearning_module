@@ -9,18 +9,20 @@ from EMGPatternRecognition.ClassificationUtility import fetching_generate_channe
     startTraningModel_binaryClassification, polt_signal
 import numpy as np
 import tensorflow as tf
-from EMGPatternRecognition.digital_processing import bp_filter_ndimSignalCOlume
+from EMGPatternRecognition.digital_processing import bp_filter_ndimSignalCOlume ,bp_filter
 from EMGPatternRecognition.feature_extraction import Handel_timeD_featuresEngeenring_withReshape
 from sklearn.metrics import classification_report, accuracy_score
 
+from emgHardwareAcquisition.HandleEMGsignalFromHardWareAcquisition import Extract_emgRowData
+
 #global_var for traning testing
 
-gesture_name=['thumb','thumb_middle']
-numberOfChannels = 16
+gesture_name=['rest','closeHand']
+
 #'VAR', 'RMS', 'IEMG','SSI', 'MAV', 'LOG', 'WL', 'ACC','M2','DVARV', 'DASDV', 'ZC', 'WAMP', 'MYOP','IE', "FR", "MNP", "TP", "MNF", "MDF", "PKF", "WENT"
 extraction_features=['VAR', 'RMS']
 namemodefiy =str(extraction_features).replace("[", "").replace("]", "").replace("'","").replace(" ","").replace(",","_")
-modelName= f"binaryClassify-{namemodefiy}"
+modelName= f"binaryClassifyHardware-{namemodefiy}"
 modelNum=0
 # Define training hyperparameters
 LEARNING_RATE = 0.01
@@ -31,26 +33,25 @@ thresholdAccuracy=0.5 # this for round prediction value from ANN model to apply 
 
 #first section prepare  data set n
 
-emg_Data_signals,fs,channelName =  fetching_generate_channels_matrix(participant_list=[5],gesture_list=[10,7], trial_list=range(1,5,1))
-emg_Data_signals= np.squeeze(emg_Data_signals) #remove any one`s dim
-# filter layer muilty channals
+emg_Data_signals_traning_set,emg_Data_signals_prediction_set,fs,channelName =  Extract_emgRowData(participant=1, gesture_list=[1, 2])
 
-gesture_16 = emg_Data_signals[0]
-gesture_17 =emg_Data_signals[1]
 
-# polt_signal(gesture_16,2048," signal for 16")
-# polt_signal(gesture_17,2048," signal for 17")
+gesture_16 = emg_Data_signals_traning_set[0]
+gesture_17 =emg_Data_signals_traning_set[1]
+
+polt_signal(gesture_16,fs,f" signal for { gesture_name[0]}")
+polt_signal(gesture_17,fs,f" signal for { gesture_name[1]}")
 
 emg_filter_gesture_16 = bp_filter_ndimSignalCOlume(gesture_16,20,450,fs)
 
 emg_filter_gesture_17 = bp_filter_ndimSignalCOlume(gesture_17,20,450,fs)
 
-# polt_signal(emg_filter_gesture_16,2048,"filter signal for 16")
-# polt_signal(emg_filter_gesture_17,2048,"filter signal for 17")
+polt_signal(emg_filter_gesture_16,fs,f"filter signal for { gesture_name[0]}")
+polt_signal(emg_filter_gesture_17,fs,f"filter signal for { gesture_name[1]}")
 
 # Decrease  number of channel
-emg_filter_gesture_16= emg_filter_gesture_16[:, 0:numberOfChannels]
-emg_filter_gesture_17= emg_filter_gesture_17[:, 0:numberOfChannels]
+# emg_filter_gesture_16= emg_filter_gesture_16[:, 0:numberOfChannels]
+# emg_filter_gesture_17= emg_filter_gesture_17[:, 0:numberOfChannels]
 
 
 
@@ -84,8 +85,8 @@ now we need to evaluate the model
 
 '''
 ##data collection fetching data
-emg_Data_signals_prediction,fs,channelName =  fetching_generate_channels_matrix(participant_list=[2],gesture_list=[10,7], trial_list=range(1,5,1))
-emg_Data_signals_prediction= np.squeeze(emg_Data_signals_prediction) #remove any one`s dim
+emg_Data_signals_prediction=  emg_Data_signals_prediction_set
+
 # filter layer muilty channals
 
 #divied objects classifed
@@ -98,8 +99,8 @@ emg_filter_gesture_16_prediction = bp_filter_ndimSignalCOlume(gesture_16_predict
 emg_filter_gesture_17_prediction = bp_filter_ndimSignalCOlume(gesture_17_prediction,20,450,fs)
 
 #channel drop
-emg_filter_gesture_16 = emg_filter_gesture_16[:, 0:numberOfChannels]
-emg_filter_gesture_17 = emg_filter_gesture_17[:, 0:numberOfChannels]
+# emg_filter_gesture_16 = emg_filter_gesture_16[:, 0:numberOfChannels]
+# emg_filter_gesture_17 = emg_filter_gesture_17[:, 0:numberOfChannels]
 
 # feature extraction for multi dim channel
 
@@ -161,41 +162,65 @@ calculate_bool_matrix_percentage(output17 ,name = "gesture 17")
 
 from sklearn import svm
 from sklearn.neighbors import KNeighborsClassifier
+'''
+objects_gestures_tran_model=np.array(objects_gestures_tran_model)
+make this way without set label because when do this step in DNN will make it as reference list var so will modify set in label so just concate both 
+'''
 objects_gestures_tran_model=np.array(objects_gestures_tran_model)
 objects_gestures_tran_modelX =np.concatenate((objects_gestures_tran_model[0],objects_gestures_tran_model[1]),axis=0)
 x_train, x_test, y_train, y_test, _,_ =splite_data_to_train_test(objects_gestures_tran_modelX, train_size=0.8, test_size=0.2,random_state=42,shuffle=True,predecitedFromData=False)
-# Initialize and train classifier
-clf = svm.SVC(kernel='rbf')
-clf.fit(x_train, y_train)
+
+# Initialize and train classifier*****************************************************************************
+svm_rbf = svm.SVC(kernel='rbf')
+svm_rbf.fit(x_train, y_train)
+
+svm_linear = svm.SVC(kernel='linear')
+svm_linear.fit(x_train, y_train)
+
+svm_sigmoid = svm.SVC(kernel='sigmoid')
+svm_sigmoid.fit(x_train, y_train)
 
 # Predictions
-y_pred = clf.predict(x_test)
+y_pred_rbf = svm_rbf.predict(x_test)
+y_pred_linear = svm_rbf.predict(x_test)
+y_pred_sigmoid = svm_rbf.predict(x_test)
 
 #plot classifier
-plot_decision_boundaryOriginalsvm_knn(clf,total_feature_estimation_gestures_prediction,label,extraction_features_name,gesture_name,"svm")
+plot_decision_boundaryOriginalsvm_knn(svm_rbf, total_feature_estimation_gestures_prediction, label, extraction_features_name, gesture_name, "svm_rbf")
+plot_decision_boundaryOriginalsvm_knn(svm_linear, total_feature_estimation_gestures_prediction, label, extraction_features_name, gesture_name, "svm_linear")
+plot_decision_boundaryOriginalsvm_knn(svm_sigmoid, total_feature_estimation_gestures_prediction, label, extraction_features_name, gesture_name, "svm_sigmoid")
 
 # Evaluation
-print ("SVM (Support Vector Machines )")
-print("Accuracy:", accuracy_score(y_test, y_pred))
+print ("SVM (Support Vector Machines ) rbf")
+print("Accuracy:", accuracy_score(y_test, y_pred_rbf))
 print("Classification Report:")
-print(classification_report(y_test, y_pred))
+print(classification_report(y_test, y_pred_rbf))
 
-#use knn classifier
+print ("SVM (Support Vector Machines ) linear")
+print("Accuracy:", accuracy_score(y_test, y_pred_linear))
+print("Classification Report:")
+print(classification_report(y_test, y_pred_linear))
+
+print ("SVM (Support Vector Machines ) sigmoid")
+print("Accuracy:", accuracy_score(y_test, y_pred_sigmoid))
+print("Classification Report:")
+print(classification_report(y_test, y_pred_sigmoid))
+#use knn classifier********************************************************************************************
 # Initialize and train classifier
 knn = KNeighborsClassifier(n_neighbors=3)
 knn.fit(x_train, y_train)
 
 # Predictions
-y_pred = knn.predict(x_test)
+y_pred_rbf = knn.predict(x_test)
 
 #plot classifier
-plot_decision_boundaryOriginalsvm_knn(knn,total_feature_estimation_gestures_prediction,label,extraction_features_name,gesture_name,"knn")
+plot_decision_boundaryOriginalsvm_knn(knn,total_feature_estimation_gestures_prediction,label,extraction_features_name,gesture_name,"knn with k=3")
 
 # Evaluation
 print("knn (K-Nearest Neighbors)")
-print("Accuracy:", accuracy_score(y_test, y_pred))
+print("Accuracy:", accuracy_score(y_test, y_pred_rbf))
 print("Classification Report:")
-print(classification_report(y_test, y_pred))
+print(classification_report(y_test, y_pred_rbf))
 
 
 #plot_svm_knn_accuracies_withRegularization
@@ -206,7 +231,7 @@ plot_svm_knn_accuracies_withRegularization(x_train,y_train ,extraction_features)
 import pickle
 
 
-pickle.dump(clf, open(f'modelSaveSVM-Knn/{len(extraction_features)}svm_model{modelNum}', 'wb'))
+pickle.dump(svm_rbf, open(f'modelSaveSVM-Knn/{len(extraction_features)}svm_model{modelNum}', 'wb'))
 pickle.dump(knn, open(f'modelSaveSVM-Knn/{len(extraction_features)}knn_model{modelNum}',"wb"))
 
 loadsvm =pickle.load( open(f'modelSaveSVM-Knn/{len(extraction_features)}svm_model{modelNum}', 'rb'))
